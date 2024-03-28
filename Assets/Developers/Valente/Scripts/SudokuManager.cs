@@ -1,60 +1,81 @@
-using System.Collections;
-using System.Collections.Generic;
-using Unity.Mathematics;
 using UnityEngine;
 using UnityEngine.Events;
 
 public class SudokuManager : MonoBehaviour
 {
-    public static SudokuManager Instance { get; private set; }
-    public SlotHandler SelectedSlot { get => _selectedSlot; set => _selectedSlot = value; }
     public UnityAction GameFinished;
     public UnityAction GameRestarting;
 
-    [SerializeField] private Transform _panel;
-    private SlotHandler _selectedSlot = null;
-    private SlotHandler[] _slots;
+    [Header("Sudoku Modes")]
+    [Tooltip("A list of Sudoku Variants.")]
+    [SerializeField] private SudokuVariant[] _variants;
 
-    private void Awake() 
-    { 
-        // If there is an instance, and it's not me, delete myself.
-        
-        if (Instance != null && Instance != this) 
-        { 
-            Destroy(this); 
-        } 
-        else 
-        { 
-            Instance = this; 
-        } 
-    }
+    [Header("Grid Configs")]
+    [Tooltip("The grid that will contain all the slots")]
+    [SerializeField] private SudokuGridManager _gridManager;
+
+
+    [Header("Others")]
+    [Tooltip("A list of keys from a numerical keypad.")]
+    [SerializeField] private KeypadKeyHandler[] _keypadKeys;
+
+
+    private SlotHandler _selectedSlot = null;
+    private int _currentVariant = 0;
+    private int _gridColumns = 9;
+    private int _gridRows = 9;
+    private int _squareColumns = 3;
+    private int _squareRows = 3;
 
     
     private void Start() {
-        _slots = _panel.GetComponentsInChildren<SlotHandler>();
+        AssignActionToKeypadKeys();
+
+        StartSudoku();
+    }
+
+    private void StartSudoku() {
+        LoadSudokuVariantData();
+        _gridManager.CreateGrid(_gridRows, _gridColumns, _squareRows, _squareColumns);
+        AssignSlotsToActions();
 
         EmptySlots();
-        DisplayRandomSLots(8);
+        DisplayRandomSLots(_variants[_currentVariant].InicialHints);
+    }
+
+    private void LoadSudokuVariantData() {
+        _gridColumns = _variants[_currentVariant].GridColumns;
+        _gridRows = _variants[_currentVariant].GridRows;
+        _squareColumns = _variants[_currentVariant].SquareColumns;
+        _squareRows = _variants[_currentVariant].SquareRows;
+
+        DisplayKeypadKeys(_gridColumns > _gridRows ? _gridColumns : _gridRows);
     }
 
     private void DisplayRandomSLots(int amount) {
         int[] boardNumbers = GetBoardNumbers();
+        int maxNumberAllowed = _squareRows * _squareColumns + 1;
 
         for (int i = 0; i < amount; i++) {
-            int randomIndex = UnityEngine.Random.Range(0, _slots.Length);
-            int randomNumber = UnityEngine.Random.Range(1, 10);
+            int randomIndex = Random.Range(0, _gridManager.Slots.Length);
+            int randomNumber = Random.Range(1, maxNumberAllowed);
+            
+            if (_gridManager.Slots[randomIndex].SlotLocked) {
+                i--;
+                continue;
+            }
 
             boardNumbers[randomIndex] = randomNumber;
             
             while (IsNumberDuplicate(boardNumbers, randomIndex)) {
-                randomNumber = UnityEngine.Random.Range(1, 10);
+                randomNumber = Random.Range(1, maxNumberAllowed);
                 boardNumbers[randomIndex] = randomNumber;
             }
             
             
             // Reveal and lock the slot
-            _slots[randomIndex].SlotText.text = boardNumbers[randomIndex].ToString();
-            _slots[randomIndex].SlotLocked = true;
+            _gridManager.Slots[randomIndex].SlotNumber = boardNumbers[randomIndex];
+            _gridManager.Slots[randomIndex].SlotLocked = true;
         }
     }
 
@@ -62,11 +83,14 @@ public class SudokuManager : MonoBehaviour
         GameRestarting.Invoke();
 
         EmptySlots();
-        DisplayRandomSLots(8);
+        DisplayRandomSLots(_variants[_currentVariant].InicialHints);
     }
 
-    public void TestBoard() {
+    public void NextMode() {
+        _currentVariant++;
+        _currentVariant = _currentVariant >= _variants.Length ? 0 : _currentVariant;
         
+        StartSudoku();
     }
 
     public void FinishBoard() {
@@ -80,23 +104,23 @@ public class SudokuManager : MonoBehaviour
         
         for (int i = 0; i < boardNumbers.Length; i++) {
             if (IsNumberDuplicate(boardNumbers, i)) {
-                _slots[i].CorrectNumber = false;
+                _gridManager.Slots[i].Duplicated = true;
             }
         }
     }
 
     private void EmptySlots() {
-        foreach (SlotHandler slot in _slots) {
-            slot.CorrectNumber = true;
-            slot.SlotText.text = "";
+        foreach (SlotHandler slot in _gridManager.Slots) {
+            slot.Duplicated = false;
+            slot.SlotNumber = 0;
             slot.SlotLocked = false;
         }
     }
 
     private bool IsNumberDuplicate(int[] numbers, int index) {
-        int r = (int)math.floor(index / 9); // 33 / 9 = 3
-        int c = (int)math.floor(index % 9); // 33 % 9 = 6
-        int square = 3*(r/3) + c/3;
+        int r = index / _gridRows; // 31 / 9 = 3 || 9 / 6 = 1
+        int c = index % _gridColumns; // 31 % 9 = 4 || 9 % 6 = 3
+        int square = _squareRows * (r/_squareRows) + c / _squareColumns;
 
         if (IsNumberInVector(GetNumbersInSquare(numbers, square, index), numbers[index]) ||
             IsNumberInVector(GetHorizontalNumbers(numbers, r, index), numbers[index]) ||
@@ -107,16 +131,17 @@ public class SudokuManager : MonoBehaviour
         return false;
     }
 
-    private int[] GetNumbersInSquare(int[] numbers, int square, int skip) {
-        int[] squares = new int[9];
 
-        for (int r = 0; r < 3; r++) {
-            for (int c = 0; c < 3; c++) {
-                int currentIndex = 9*r + 3*(square%3) + 27*(square/3) + c;
+    private int[] GetNumbersInSquare(int[] numbers, int square, int skip) {
+        int[] squares = new int[_squareColumns * _squareRows];
+
+        for (int r = 0; r < _squareRows; r++) {
+            for (int c = 0; c < _squareColumns; c++) {
+                int currentIndex = _gridColumns * r + _squareColumns * (square % _squareRows) + ((_squareRows * _squareColumns) * (_gridColumns / _squareColumns)) * (square / _squareRows) + c;
 
                 if (currentIndex == skip) continue;
 
-                squares[3*r + c] = numbers[currentIndex];
+                squares[_squareColumns*r + c] = numbers[currentIndex];
             }
         }
 
@@ -124,24 +149,28 @@ public class SudokuManager : MonoBehaviour
     }
 
     private int[] GetHorizontalNumbers(int[] numbers, int r, int skip) {
-        int [] v = new int[9];
+        int [] v = new int[_gridColumns];
 
-        for (int c = 0; c < 9; c++) {
-            if (9*r + c == skip) continue;
+        for (int c = 0; c < _gridColumns; c++) {
+            int currentIndex = _gridColumns*r + c;
 
-            v[c] = numbers[9*r + c];
+            if (currentIndex == skip) continue;
+
+            v[c] = numbers[currentIndex];
         }
 
         return v;
     }
 
     private int[] GetVerticalNumbers(int[] numbers, int c, int skip) {
-        int [] v = new int[9];
+        int [] v = new int[_gridRows];
 
-        for (int r = 0; r < 9; r++) {
-            if (9*r + c == skip) continue;
+        for (int r = 0; r < _gridRows; r++) {
+            int currentIndex = _gridColumns*r + c;
 
-            v[r] = numbers[9*r + c];
+            if (currentIndex == skip) continue;
+
+            v[r] = numbers[currentIndex];
         }
 
         return v;
@@ -169,15 +198,49 @@ public class SudokuManager : MonoBehaviour
     }
 
     private int[] GetBoardNumbers() {
-        int[] v = new int[_slots.Length];
+        int[] v = new int[_gridManager.Slots.Length];
 
-        for (int i = 0; i < _slots.Length; i++) {
-            if (_slots[i].SlotText.text == "")
-                v[i] = 0;
-            else
-                v[i] = int.Parse(_slots[i].SlotText.text);
+        for (int i = 0; i < _gridManager.Slots.Length; i++) {
+            v[i] = _gridManager.Slots[i].SlotNumber;
         }
 
         return v;
+    }
+
+    private void AssignSlotsToActions() {
+        for (int i = 0; i < _gridManager.Slots.Length; i++) {
+            GameRestarting += _gridManager.Slots[i].RestartSlot;
+            GameFinished += _gridManager.Slots[i].RevealSlot;
+            _gridManager.Slots[i].SlotPressed += OnSlotPressed;
+        }
+    }
+
+    private void OnSlotPressed(SlotHandler slot) {
+        if (_selectedSlot) {
+            _selectedSlot.ResetColor();
+            _selectedSlot = null;
+        }
+
+        if (slot.SlotLocked) return;
+
+        slot.SelectSlot();
+        _selectedSlot = slot;
+    }
+
+    private void AssignActionToKeypadKeys() {
+        for (int i = 0; i < _keypadKeys.Length; i++) {
+            _keypadKeys[i].KeyPressed += OnKeypadKeyPressed;
+        }
+    }
+
+    private void OnKeypadKeyPressed(int number) {
+        if (_selectedSlot)
+            _selectedSlot.SlotNumber = number;
+    }
+
+    private void DisplayKeypadKeys(int hideAfter) {
+        for (int i = 0; i < _keypadKeys.Length; i++) {
+            _keypadKeys[i].gameObject.SetActive(i < hideAfter ? true : false);
+        }
     }
 }

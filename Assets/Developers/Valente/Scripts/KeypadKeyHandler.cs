@@ -1,11 +1,14 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Events;
 using UnityEngine.EventSystems;
 
 public class KeypadKeyHandler : MonoBehaviour, IPointerDownHandler, IPointerUpHandler
 {
-    [SerializeField] private string _keyNumber;
+    public UnityAction<int> KeyPressed;
+
+    [SerializeField] private int _keyNumber;
 
     // Start is called before the first frame update
     void Start()
@@ -26,7 +29,6 @@ public class KeypadKeyHandler : MonoBehaviour, IPointerDownHandler, IPointerUpHa
 
     public void OnPointerUp(PointerEventData eventData)
     {
-        if (SudokuManager.Instance.SelectedSlot)
-            SudokuManager.Instance.SelectedSlot.SlotText.text = _keyNumber;
+        KeyPressed.Invoke(_keyNumber);
     }
 }
