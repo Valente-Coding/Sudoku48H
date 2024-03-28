@@ -13,8 +13,6 @@ public class SplitContainers : MonoBehaviour
     
     void OnRectTransformDimensionsChange()
     {
-        Debug.Log("SPLIT!");
-        
         if (_rect == null)
             _rect = transform.GetComponent<RectTransform>();
         

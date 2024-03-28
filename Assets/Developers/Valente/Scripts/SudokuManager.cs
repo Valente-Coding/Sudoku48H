@@ -37,6 +37,7 @@ public class SudokuManager : MonoBehaviour
     private void StartSudoku() {
         LoadSudokuVariantData();
         _gridManager.CreateGrid(_gridRows, _gridColumns, _squareRows, _squareColumns);
+        ClearSlotsActions();
         AssignSlotsToActions();
 
         EmptySlots();
@@ -213,6 +214,11 @@ public class SudokuManager : MonoBehaviour
             GameFinished += _gridManager.Slots[i].RevealSlot;
             _gridManager.Slots[i].SlotPressed += OnSlotPressed;
         }
+    }
+
+    private void ClearSlotsActions() {
+        GameRestarting = null;
+        GameFinished = null;
     }
 
     private void OnSlotPressed(SlotHandler slot) {
